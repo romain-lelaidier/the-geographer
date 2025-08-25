@@ -3,7 +3,7 @@ import { useNavigate } from '@solidjs/router';
 
 import { u, uLogOut, uTryLog } from '../components/auth';
 import { Layout } from '../components/layout';
-import { AIcon, mds } from "../components/utils";
+import { AIcon, mds, User } from "../components/utils";
 import { createSignal, Show } from "solid-js";
 import { Flag } from "../components/flag";
 import { GameSelector } from "../components/gameselector";
@@ -37,10 +37,10 @@ export default function App() {
           fallback={<div class="flex gap-2"><AIcon href="login" type="right-to-bracket" text="log in"/> or <AIcon href="signup" type="paw" text="register"/></div>}
         >
           <div class="flex flex-col items-center">
-            <div>logged as <span class="font-bold"><Flag iso={u.params.iso}/> <span>{u.name}</span></span></div>
+            <div>logged as <User user={{name: u.name, iso: u.params.iso}}/></div>
             <div class="font-bold flex flex-row gap-2 [&>a]:text-white [&>a]:text-shadow">
               <AIcon href="settings" type="gear" text="settings"/>{mds}
-              <AIcon href="user" type="dna" text="statistics"/>{mds}
+              {/* <AIcon href="profile" type="dna" text="profile"/>{mds} */}
               <AIcon href="/" type="moon" text="disconnect" onClick={uLogOut}/>
             </div>
           </div>

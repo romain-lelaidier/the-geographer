@@ -1,7 +1,7 @@
 import { createEffect, createSignal, For } from "solid-js";
 import { info } from "../data/info";
 import { FlagSelector } from "./flag";
-import { getName, regionName } from "./utils";
+import { getName, regionName, difficultyName } from "./utils";
 import { parseParams } from "../data/utils";
 
 export function GameSelector(props) {
@@ -73,23 +73,6 @@ export function GameSelector(props) {
     props.setter(type() + difficulty() + region());
   })
 
-  function getDifficultyName(diff) {
-    return getName((type() == "e"
-      ? {
-        e: { fr: "facile (10)",     en: "easy (10)"   },
-        m: { fr: "moyen (30)",      en: "medium (30)" },
-        h: { fr: "difficile (100)", en: "hard (100)"  },
-        a: { fr: "tout", en: "all" },
-      }
-      : {
-        e: { fr: "facile", en: "easy"   },
-        m: { fr: "moyen",  en: "medium" },
-        h: { fr: "tout",   en: "all"    },
-        o: { fr: "tout (onu)", en: "all (un)"}
-      }
-    ) [ diff ]);
-  }
-
   return (
     <div class="text-xl font-bold flex flex-col gap-1">
       <div class="flex flex-row gap-2 items-center">
@@ -114,7 +97,7 @@ export function GameSelector(props) {
           <span>difficulty</span>
             <select class="bg-b h-8 text-white px-2 rounded-sm cursor-pointer" value={difficulty()} onInput={(e) => { setDifficulty(e.target.value) }}>
               <For each={categoryTree[region()][type()]}>{(d, i) =>
-                <option value={d}>{getDifficultyName(d)}</option>
+                <option value={d}>{difficultyName(type(), d)}</option>
               }</For>
             </select>
         </div>

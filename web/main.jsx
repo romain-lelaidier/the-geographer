@@ -5,7 +5,7 @@ import { MetaProvider, Title } from "@solidjs/meta";
 import Home from "./pages/index.jsx";
 import Play from "./pages/play.jsx";
 import Leaderboards from "./pages/leaderboards.jsx";
-import User from "./pages/user.jsx";
+import Profile from "./pages/profile.jsx";
 import { Login, Signup, Verify, Settings } from "./pages/log.jsx";
 import { Layout } from './components/layout';
 import { AIcon } from "./components/utils.jsx";
@@ -42,7 +42,8 @@ render(
       <Route path="/play/:game" component={Play} />
       <Route path="/leaderboards/:game" component={Leaderboards} />
       <Route path="/leaderboards" component={Leaderboards} />
-      <Route path="/user" component={User} />
+      <Route path="/profile" component={Profile} />
+      <Route path="/profile/:uname" component={Profile} />
       {/* <Route path="/search" component={Home} />
       <Route path="/search/:query" component={Search} />
       <Route path="/artist/:id" component={Artist} />

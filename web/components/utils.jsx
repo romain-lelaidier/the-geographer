@@ -2,6 +2,8 @@ import { A } from "@solidjs/router";
 import { Icon } from "./icons";
 import { u } from "./auth";
 import { info } from "../data/info";
+import { Flag } from "./flag";
+import { Show } from "solid-js";
 
 export function timeAgo(date) {
   if (typeof date == 'object') date = new Date(date);
@@ -87,4 +89,37 @@ export function getName(obj) {
 
 export function regionName(iso) {
   return getName(info[iso].name).toLocaleLowerCase()
+}
+
+export function difficultyName(type, diff) {
+  try {
+    return getName((type == "e"
+      ? {
+        e: { fr: "facile (10)",     en: "easy (10)"   },
+        m: { fr: "moyen (30)",      en: "medium (30)" },
+        h: { fr: "difficile (100)", en: "hard (100)"  },
+        a: { fr: "tout", en: "all" },
+      }
+      : {
+        e: { fr: "facile", en: "easy"   },
+        m: { fr: "moyen",  en: "medium" },
+        h: { fr: "tout",   en: "all"    },
+        o: { fr: "tout (onu)", en: "all (un)"}
+      }
+    ) [ diff ]);
+  } catch(err) {
+    return null;
+  }
+}
+
+export function User(props) {
+  return (
+    <A class="inline flex flex-row gap-1" href={"/profile/" + props.user.name}>
+      <Show when={props.user.iso}>
+        <Flag iso={props.user.iso}/>
+        <span> </span>
+      </Show>
+      <span class="font-bold">{props.user.name}</span>
+    </A>
+  )
 }

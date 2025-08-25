@@ -1,6 +1,7 @@
 import { createEffect, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { is2xx } from "./utils";
+import { parseParams } from "../data/utils";
 
 const [ token, setToken ] = createSignal(localStorage.getItem("token"));
 createEffect(() => {
@@ -116,9 +117,10 @@ export const getGameLeaderboards = async (type) => {
   return await res.json();
 }
 
-export const getGamePersonal = async (type) => {
-  await uTryLog();
-  const res = await post('/api/um/stats', { type });
+export const getStats = async (uname) => {
+  // await uTryLog();
+  // const res = await post('/api/um/stats', { type });
+  const res = await fetch('/api/um/stats/' + uname);
   if (!is2xx(res)) {
     throw await res.text();
   }

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, or } from "drizzle-orm";
+import { and, asc, desc, eq, lte, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jsonwebtoken from "jsonwebtoken";
 import { users, games } from "./db/schema.js";
@@ -47,6 +47,11 @@ export default class UM {
   async sendVerificationEmail(email, name, vkey) {
     const token = Buffer.from(vkey + name).toString('base64');
     const url = process.env.LOCATION_WEB + 'verify/' + token;
+
+    if (process.env.DEBUG) {
+      console.log(name, email, url);
+      return;
+    }
 
     await transporter.sendMail({
       from: `"The Geographer" <${process.env.MAIL_USER}>`,
@@ -275,14 +280,59 @@ export default class UM {
 
   async getStats(req, res) {
     try {
-      if (!req.body.type) return res.status(300).send("Field type not specified");
+      if (!req.params.uname) return res.status(300).send("Field uname not specified");
+      const uname = req.params.uname;
 
-      const fullTable = await this.db.select()
+      const existingUsers = await this.db.select()
+        .from(users)
+        .where(eq(users.name, uname));
+
+      if (existingUsers.length == 0) return res.status(300).send("This user does not exist");
+
+      const user = existingUsers[0];
+
+      const table = await this.db.select()
         .from(games)
-        .where(and(eq(games.type, req.body.type), eq(games.uname, req.user.name)))
-        .orderBy(asc(games.time));
+        .where(eq(games.uname, uname));
 
-      return res.status(200).send(fullTable);
+      const ugames = {};
+      for (const entry of table) {
+        if (!ugames[entry.type]) ugames[entry.type] = { u: [] };
+        ugames[entry.type].u.push({
+          date: entry.date,
+          type: entry.type,
+          time: entry.time,
+          accuracy: entry.accuracy
+        })
+      }
+
+      const types = Object.keys(ugames).map(t => ({ t, type: t[0], difficulty: t[1], region: t.substring(2) }));
+      const grouped = Object.groupBy(types, ({ region }) => region);
+      for (const region of Object.keys(grouped)) {
+        grouped[region] = Object.groupBy(grouped[region], ({ type }) => type);
+        for (const type of Object.keys(grouped[region])) {
+          grouped[region][type] = Object.groupBy(grouped[region][type], ({ difficulty }) => difficulty);
+          for (const difficulty of Object.keys(grouped[region][type])) {
+            var typegames = ugames[type + difficulty + region];
+            var bestgame = typegames.u.sort((a, b) => a.time - b.time)[0];
+            bestgame.ngames = typegames.u.length;
+            
+            bestgame.rank = (await this.db.select({ uname: games.uname })
+              .from(games)
+              .where(and(eq(games.type, type + difficulty + region), lte(games.time, bestgame.time)))
+              .groupBy(games.uname)
+            ).length;
+
+            grouped[region][type][difficulty] = bestgame;
+          }
+        }
+      }
+
+      return res.status(200).send({ 
+        user: { name: user.name, iso: JSON.parse(user.params).iso },
+        games: grouped
+      });
+
     } catch(err) {
       console.error(err);
       res.status(500).send(err.toString())

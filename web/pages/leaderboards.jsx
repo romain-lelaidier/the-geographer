@@ -3,7 +3,7 @@ import { GameSelector } from "../components/gameselector";
 import { Layout } from "../components/layout";
 import { createResource, createSignal, For, Show } from "solid-js";
 import { getGameLeaderboards } from "../components/auth";
-import { accuracyToString, timeToString } from "../components/utils";
+import { accuracyToString, timeToString, User } from "../components/utils";
 import { Flag } from "../components/flag";
 import { Icon } from "../components/icons";
 
@@ -46,7 +46,7 @@ export default function App(props) {
                 <For each={data()}>{(entry, i) => 
                   <tr class={"[&>td]:px-1 bg-white/" + (i() % 2 == 0 ? 20 : 10)}>
                     <td>{i()+1}</td>
-                    <td class="font-bold"><Flag iso={entry.iso}/> {entry.uname}</td>
+                    <td><User user={{iso: entry.iso, name: entry.uname}}/></td>
                     <td>{timeToString(entry.time)}</td>
                     <td>{accuracyToString(entry.accuracy)}</td>
                     <td>{new Date(entry.date).toLocaleDateString()}</td>
