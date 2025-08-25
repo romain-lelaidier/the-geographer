@@ -1,0 +1,34 @@
+{
+  "name": "thegeographer",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start:api": "node --env-file=.env ./api/api.js",
+    "start": "vite --host",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.3",
+    "@tailwindcss/vite": "^4.1.12",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.1",
+    "drizzle-orm": "^0.44.4",
+    "express-rate-limit": "^8.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.14.3",
+    "nodemailer": "^7.0.5",
+    "solid-js": "^1.9.9",
+    "tailwindcss": "^4.1.12"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.4",
+    "tsx": "^4.20.4",
+    "vite": "^6.3.5",
+    "vite-plugin-solid": "^2.11.8"
+  }
+}
