@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jsonwebtoken from "jsonwebtoken";
-import { users, games } from "./schema.js";
+import { users, games } from "./db/schema.js";
 import { transporter } from "./mail.js";
 
 export default class UM {

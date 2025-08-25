@@ -4,7 +4,7 @@ import mysql from "mysql2/promise";
 import { rateLimit } from 'express-rate-limit';
 import jsonwebtoken from "jsonwebtoken";
 
-import * as schema from "./schema.js";
+import * as schema from "./db/schema.js";
 import UM from "./um.js";
 import * as fs from "fs";
 
