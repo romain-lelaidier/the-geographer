@@ -34,13 +34,14 @@ export default class UM {
 
   getCleanParamsString(params, defaultParams = {}) {
     let cleanedParams = defaultParams;
-    for (const param of [ 'iso', 'lng' ]) {
+    for (const param of [ 'iso', 'lng', 'prj' ]) {
       try {
         cleanedParams[param] = params[param];
       } catch(err) {}
     }
     if (!cleanedParams.iso) cleanedParams.iso = 'wor'
     if (!cleanedParams.lng) cleanedParams.lng = 'en'
+    if (!cleanedParams.prj) cleanedParams.prj = 'nat'
     return JSON.stringify(cleanedParams)
   }
 
@@ -332,6 +333,22 @@ export default class UM {
         user: { name: user.name, iso: JSON.parse(user.params).iso },
         games: grouped
       });
+
+    } catch(err) {
+      console.error(err);
+      res.status(500).send(err.toString())
+    }
+  }
+
+  async getAllPlayers(req, res) {
+    try {
+      const existingUsers = await this.db.select()
+        .from(users);
+
+      return res.status(200).send(existingUsers.map(user => ({
+        name: user.name,
+        iso: JSON.parse(user.params).iso
+      })));
 
     } catch(err) {
       console.error(err);

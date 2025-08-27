@@ -81,6 +81,7 @@ app.post('/api/um/savegame', authenticateJWT, (req, res) => um.saveGame(req, res
 app.get('/api/um/gethighest/:type', (req, res) => um.getHighest(req, res));
 app.get('/api/um/leaderboards/:type', (req, res) => um.getLeaderboards(req, res));
 app.get('/api/um/stats/:uname', (req, res) => um.getStats(req, res));
+app.get('/api/um/allplayers', (req, res) => um.getAllPlayers(req, res));
 
 // data files
 const availableFiles = fs.readdirSync('./data').map(file => file.split('.bin')[0])

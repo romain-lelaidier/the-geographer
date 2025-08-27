@@ -1,14 +1,15 @@
 import { A, useParams } from "@solidjs/router";
 import { Layout } from "../components/layout";
-import { info } from "../data/info";
+import { info } from "../api/info";
 import { Map } from "../components/map";
 import { createStore } from "solid-js/store";
 import { createEffect, createResource, createSignal, Match, Show, Switch } from "solid-js";
-import { accuracyToString, AIcon, getName, LinkButton, timeToString } from "../components/utils";
+import { LinkIcon, LinkButton, BackButton } from "../components/utils";
 import { Icon } from "../components/icons";
-import { u, getGameHighest, uSaveGame, uTryLog } from "../components/auth";
+import { u, uSaveGame, uTryLog } from "../api/auth";
 import { Flag } from "../components/flag";
-import { fetchData, parseParams } from "../data/utils";
+import { getGameHighest } from "../api/utils";
+import { accuracyToString, timeToString, getName, fetchData, parseParams, populationToString } from "../api/gameutils";
 
 class Timer {
   constructor() {
@@ -83,13 +84,16 @@ function buildQueue(params, data) {
     let done = 0;
     for (const city of data.cities) {
       if (data.zones[city.zid].on && (
-        "bd".includes(params.type) && params.region.length == 3 && city.level == 1
-          || "bd".includes(params.type) && params.region.length == 2 && (params.difficulty == "x" && city.level <= "bd".indexOf(params.type)+2 || city.level <= "emh".indexOf(params.difficulty))
-          || params.type == "e" && done < { e: 10, m: 30, h: 100 } [ params.difficulty ]
+          "bd".includes(params.type) && params.region.length == 3 && city.level == 1
+        || "bd".includes(params.type) && params.region.length == 2 && params.difficulty == "x" && city.level != 0 && (city.level <= "bd".indexOf(params.type) + 2 || city.level <= "emh".indexOf(params.difficulty))
+        || params.type == "e" && done < { e: 10, m: 30, h: 100 } [ params.difficulty ]
       )) {
         city.on = true;
         done++;
       }
+    }
+    for (const zone of data.zones) {
+      zone.on &= data.cities.some(city => city.on && city.zid == zone.id)
     }
   }
 
@@ -110,12 +114,17 @@ function buildQueue(params, data) {
 
 function ZoneOrCity(props) {
   return (
-    <>
-      <Show when={props.zc.flag || (info[props.zc.iso] && info[props.zc.iso].flag)}>
-        <img class="h-full inline rounded-sm" src={`data:image/webp;base64,${props.zc.flag || info[props.zc.iso].flag}`}></img>
+    <div class="h-full flex flex-col justify-center items-center">
+      <div class="h-full max-h-11 flex flex-row gap-1 items-center">
+        <Show when={props.zc.flag || (info[props.zc.iso] && info[props.zc.iso].flag)}>
+          <img class="h-full max-h-9 inline rounded-sm" src={`data:image/webp;base64,${props.zc.flag || info[props.zc.iso].flag}`}></img>
+        </Show>
+        <span class="mx-1 lowercase font-bold">{getName(props.zc.name)}</span>
+      </div>
+      <Show when={props.detailed && props.zc.pop}>
+        <div class="text-sm -mt-1">{populationToString(props.zc.pop)}</div>
       </Show>
-      <span class="mx-1 lowercase font-bold">{getName(props.zc.name)}</span>
-    </>
+    </div>
   )
 }
 
@@ -131,7 +140,7 @@ function WorldRecord(props) {
 
 export default function App(props) {
   const params = parseParams(useParams().game);
-  // console.log(params);
+  console.log(params);
 
   const [ data ] = createResource(params, fetchData);
   const timer = new Timer();
@@ -197,7 +206,6 @@ export default function App(props) {
       })
     } else {
       getGameHighest(params.urlp).then(res => {
-        console.log(res);
         setG("highest", {
           all: {
             time: res.highestTime,
@@ -229,12 +237,8 @@ export default function App(props) {
       } else if (rtype == "c") {
         data().cities[id].on = false;
         // if all of the cities in the zone have been deactivated, deactivate the zone
-        let zoneUnderIsEmpty = "bd".includes(params.type);
-        const zoneUnderID = data().cities[id].zid
-        for (const city of data().cities) {
-          if (!zoneUnderIsEmpty && city.zid == zoneUnderID && city.on) zoneUnderIsEmpty = false;
-        }
-        data().zones[zoneUnderID].on = !zoneUnderIsEmpty;
+        const zone = data().zones[data().cities[id].zid];
+        zone.on &= data().cities.some(city => city.on && city.zid == zone.id)
       }
 
       map.helpZoneId = -1;
@@ -266,7 +270,7 @@ export default function App(props) {
       log(<div class="flex flex-row gap-1 items-center pr-3">
         <Icon type="circle-xmark" size={3}/>
         <span>{getName({fr: 'Vous avez cliqué sur', en: 'You clicked on'})}</span>
-        <div class="flex flex-row h-5">
+        <div class="h-5">
           <ZoneOrCity zc={params.rtype == 'z' ? data().zones[id].info : data().cities[id]}/>
         </div>
       </div>);
@@ -292,12 +296,12 @@ export default function App(props) {
       if (data().viewranges)   params.viewranges   = data().viewranges;
       if (data().regionlimits) params.regionlimits = data().regionlimits;
 
-      map = new Map(data(), params, handleHover, handleClick);
-
       const ctrs = { afr: [ 20, 0 ], asi: [ 100, 25 ], eur: [ 15, 60 ], noa: [ -70, 40 ], oce: [ 160, -20 ], soa: [ -60, -25 ] };
       const vrgs = { afr: 180, asi: 190, eur: 120, noa: 180, oce: 180, soa: 180 };
-      if (params.region in ctrs) map.begincenterpoint(ctrs[params.region]);
-      if (params.region in vrgs) map.beginviewrange(vrgs[params.region]);
+      if (params.region in ctrs) params.regioncenter = ctrs[params.region];
+      if (params.region in vrgs) params.beginningviewrange = vrgs[params.region];
+
+      map = new Map(data(), params, handleHover, handleClick, u.params.prj);
 
       startGame();
       // win();
@@ -343,8 +347,8 @@ export default function App(props) {
         <div class="pointer-events-none absolute bottom-4 left-0 w-full flex flex-col gap-1 items-center [&>*]:pointer-events-auto">
           <Show when={g.current}>
             <div class="bg-white/50 rounded-md text-sm px-1">{timeToString(timer.time())}</div>
-            <div class="flex flex-row p-1 h-10 gap-1 bg-white/50 rounded-md text-2xl">
-              <ZoneOrCity zc={g.current} />
+            <div class="p-1 bg-white/50 rounded-md text-2xl">
+              <ZoneOrCity zc={g.current} detailed={true} />
             </div>
             <div class="relative overflow-hidden bg-white/50 rounded-lg h-3 w-128 flex flex-row items-center justify-center font-bold" style={{'font-size': '0.7em'}}>
               <div style={{width: `${100 * g.i / g.q.length}%`}} class="transition-width duration-250 ease absolute left-0 rounded-lg h-full bg-vermi z-0"></div>
@@ -361,7 +365,7 @@ export default function App(props) {
         <Show when={g.won}>
           <div class="absolute w-full h-full bg-lblue/80 z-4 flex items-center justify-center">
             <div class="bg-lblue shadow-md p-2 rounded-md flex flex-col gap-1 min-w-98">
-              <A href="/" class="uppercase flex flex-row gap-1 items-center"><Icon type="arrow-left" size={1}/><span class="pt-[0.8]">Home</span></A>
+              <BackButton/>
               <div class="font-bold text-2xl">You won !</div>
                 <div>
                   <div class="flex flex-row gap-1 text-xl">
@@ -430,7 +434,7 @@ export default function App(props) {
                   </Show>
               </div>
               <Show when={!u.connected}>
-                <div class="flex flex-row gap-1"><AIcon href="/login" type="right-to-bracket" text="Log in"/> or <AIcon href="/signup" type="paw" text="register"/> to save your results.</div>
+                <div class="flex flex-row gap-1"><LinkIcon href="/login" type="right-to-bracket" text="Log in"/> or <LinkIcon href="/signup" type="paw" text="register"/> to save your results.</div>
               </Show>
               <div>
                 View the leaderboards <LinkButton href={"/leaderboards/" + params.urlp}/>.

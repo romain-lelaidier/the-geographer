@@ -1,5 +1,5 @@
 import { createSignal, For } from "solid-js"
-import { info } from "../data/info.jsx"
+import { info } from "../api/info.jsx"
 import { Popper } from "./popper.jsx"
 
 export function Flag(props) {

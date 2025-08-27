@@ -1,12 +1,12 @@
 import { A, useParams } from "@solidjs/router";
-import { GameSelector } from "../components/gameselector";
 import { Layout } from "../components/layout";
 import { createResource, createSignal, For, Show, createEffect } from "solid-js";
-import { getStats, u } from "../components/auth";
-import { accuracyToString, AIcon, difficultyName, getName, regionName, timeToString, User } from "../components/utils";
-import { Icon } from "../components/icons";
+import { LinkIcon, BackButton } from "../components/utils";
 import { Flag } from "../components/flag";
-import { info } from "../data/info";
+import { info } from "../api/info";
+import { getStats } from "../api/utils";
+import { regionName, getName, timeToString, difficultyName } from "../api/gameutils";
+import { Icon } from "../components/icons";
 
 function Rank(props) {
   return (
@@ -37,7 +37,7 @@ export default function App(props) {
     <Layout>
       <div class="flex flex-col gap-3">
         <div>
-          <A href="/" class="uppercase flex flex-row gap-1 items-center"><Icon type="arrow-left" size={1}/><span class="pt-[0.8]">The geographer</span></A>
+          <BackButton/>
           <div class="text-3xl">user <b class="inline flex flex-row gap-1 items-center"><Show when={!data.error && data()}><Flag iso={data().user.iso}/> </Show>{uname}</b></div>
         </div>
 
@@ -59,9 +59,8 @@ export default function App(props) {
               <tr class="bg-b text-white uppercase font-bold">
                 <td>region</td>
                 <td>type</td>
-                <td>difficulty</td>
-                <td>games</td>
                 <td>rank</td>
+                <td>games</td>
                 <td>best time</td>
                 <td>date</td>
                 <td></td>
@@ -76,17 +75,25 @@ export default function App(props) {
                           <span> {regionName(region)}</span>
                         </td>
                       </Show>
-                      <Show when={k() == 0}>
-                        <td rowspan={Object.keys(gamesT).length}>
-                          {getName(info[region].disp[type])}
-                        </td>
-                      </Show>
-                      <td>{difficultyName(type, difficulty)}</td>
-                      <td>{gamesD.ngames}</td>
+                      <td>
+                        <div class="flex flex-row justify-center gap-1 items-center">
+                          <span class="font-bold">{getName(info[region].disp[type])}</span>
+                          <Show when={difficulty != "x"}>
+                            <Icon type="arrow-right" size={1}/>
+                            <span>{difficultyName(type, difficulty)}</span>
+                          </Show>
+                        </div>
+                      </td>
                       <td class="font-bold text-center"><Rank rank={gamesD.rank}/></td>
+                      <td>{gamesD.ngames}</td>
                       <td>{timeToString(gamesD.time)}</td>
                       <td>{new Date(gamesD.date).toLocaleDateString()}</td>
-                      <td><AIcon href={"/play/" + type + difficulty + region} type="play"/></td>
+                      <td>
+                        <div class="flex flex-row justify-center items-center gap-2">
+                          <LinkIcon href={"/play/" + type + difficulty + region} type="play"/>
+                          <LinkIcon href={"/leaderboards/" + type + difficulty + region} type="ranking-star"/>
+                        </div>
+                      </td>
                     </tr>
                   }</For>
                 }</For>

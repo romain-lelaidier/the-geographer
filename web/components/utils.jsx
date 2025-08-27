@@ -1,125 +1,48 @@
-import { A } from "@solidjs/router";
+import { A, useLocation, useNavigate } from "@solidjs/router";
 import { Icon } from "./icons";
-import { u } from "./auth";
-import { info } from "../data/info";
 import { Flag } from "./flag";
 import { Show } from "solid-js";
 
-export function timeAgo(date) {
-  if (typeof date == 'object') date = new Date(date);
-  const seconds = Math.floor((new Date() - date) / 1000);
+export const mds = " · ";
 
-  const intervals = {
-    year: 31536000,
-    month: 2592000,
-    week: 604800,
-    day: 86400,
-    hour: 3600,
-    minute: 60,
-    second: 1
-  };
 
-  for (const [unit, secondsInUnit] of Object.entries(intervals)) {
-    const interval = Math.floor(seconds / secondsInUnit);
-    if (interval >= 1) {
-      return interval === 1 ? `${interval} ${unit} ago` : `${interval} ${unit}s ago`;
-    }
-  }
-
-  return 'just now';
+export function Link(props) {
+  const location = useLocation();
+  return <A state={{ previous: location.pathname }} {...props} />;
 }
 
-export function accuracyToString(a) {
-  return `${Math.round(a * 10) / 10}%`
-}
-
-export function populationToString(p) {
-  return p > 1000000 ? `${Math.round(p / 100000) / 10}M` : (p > 1000 ? `${(p - (p % 1000)) / 1000}k` : p)
-}
-
-export function timeToString(t) {
-  const z = a => { 
-      a = a.toString();
-      while (a.length < 2) a = "0" + a;
-      return a;
-  }
-  const hours = Math.floor(t / (60 * 60 * 1000));
-  const minutes = Math.floor((t % (60 * 60 * 1000)) / (60 * 1000));
-  const seconds = Math.floor((t % (60 * 1000)) / 1000);
-  const millis  = Math.floor((t % 1000) / 100);
-  return `${(hours > 0 ? `${hours}:${z(minutes)}` : minutes)}:${z(seconds)}.${millis}`;
-}
-
-export function is2xx(res) {
-  return Math.floor(res.status / 100) == 2;
-}
-
-export function RoundButton(props) {
-  return (
-    <span class="w-fit rounded-md block bg-b text-white px-3 py-1 cursor-pointer" onclick={props.onclick}>{props.text}</span>
-  )
+export function BackButton() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const backPath = () => (location.state?.previous ? -1 : '/');
+  return <button class="uppercase flex flex-row gap-1 items-center cursor-pointer" onClick={() => navigate(backPath())}><Icon type="arrow-left" size={1}/><span class="pt-[0.8]">back</span></button>;
 }
 
 export function LinkButton(props) {
-  // const classes = "w-fit rounded-md px-1 py-0.5 bg-white/10 cursor-pointer";
   const classes = "w-fit underline cursor-pointer";
   const text = props.text || props.children || 'here'
   if (props.href) {
-    return <A href={props.href} class={classes}>{text}</A>
+    return <Link href={props.href} class={classes}>{text}</Link>
   }
   if (props.onclick || props.onClick) {
     return <span onclick={(props.onclick || props.onClick)} class={classes}>{text}</span>
   }
 }
 
-export const mds = " · ";
-
-export function AIcon(props) {
-  return (
-    <A {...props} class="flex items-center gap-1 font-bold"><Icon type={props.type}/>{props.text}</A>
-  )
-}
-
-export function getName(obj) {
-  const preferred = u.params.lng || 'en';
-  const available = Object.keys(obj).filter(key => obj[key].length > 0)
-  if (available.includes(preferred)) return obj[preferred];
-  return obj[available[0]];
-}
-
-export function regionName(iso) {
-  return getName(info[iso].name).toLocaleLowerCase()
-}
-
-export function difficultyName(type, diff) {
-  try {
-    return getName((type == "e"
-      ? {
-        e: { fr: "facile (10)",     en: "easy (10)"   },
-        m: { fr: "moyen (30)",      en: "medium (30)" },
-        h: { fr: "difficile (100)", en: "hard (100)"  },
-        a: { fr: "tout", en: "all" },
-      }
-      : {
-        e: { fr: "facile", en: "easy"   },
-        m: { fr: "moyen",  en: "medium" },
-        h: { fr: "tout",   en: "all"    },
-        o: { fr: "tout (onu)", en: "all (un)"}
-      }
-    ) [ diff ]);
-  } catch(err) {
-    return null;
-  }
-}
-
 export function User(props) {
   return (
-    <A class="inline flex flex-row gap-1" href={"/profile/" + props.user.name}>
+    <Link class="inline flex flex-row gap-1" href={"/profile/" + props.user.name}>
       <Show when={props.user.iso}>
         <Flag iso={props.user.iso}/>
         <span> </span>
       </Show>
       <span class="font-bold">{props.user.name}</span>
-    </A>
+    </Link>
+  )
+}
+
+export function LinkIcon(props) {
+  return (
+    <Link {...props} class="flex items-center gap-1 font-bold"><Icon type={props.type}/>{props.text}</Link>
   )
 }

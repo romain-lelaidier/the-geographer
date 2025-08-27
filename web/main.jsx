@@ -8,8 +8,8 @@ import Leaderboards from "./pages/leaderboards.jsx";
 import Profile from "./pages/profile.jsx";
 import { Login, Signup, Verify, Settings } from "./pages/log.jsx";
 import { Layout } from './components/layout';
-import { AIcon } from "./components/utils.jsx";
-import { uTryLog } from "./components/auth.jsx";
+import { LinkIcon } from "./components/utils.jsx";
+import { uTryLog } from "./api/auth.jsx";
 
 function Page404() {
   return (
@@ -19,7 +19,7 @@ function Page404() {
       </MetaProvider>
 
       <div class="uppercase">
-        <AIcon href="/" type="arrow-left" size={1} text="The Geographer"/>
+        <LinkIcon href="/" type="arrow-left" size={1} text="The Geographer"/>
       </div>
 
       <div class="text-xl">

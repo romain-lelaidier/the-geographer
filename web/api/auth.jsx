@@ -1,7 +1,6 @@
 import { createEffect, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { is2xx } from "./utils";
-import { parseParams } from "../data/utils";
 
 const [ token, setToken ] = createSignal(localStorage.getItem("token"));
 createEffect(() => {
@@ -43,7 +42,11 @@ async function logFromRes(res) {
     setToken(json.token);
     setU("name", json.name);
     setU("email", json.email);
-    setU("params", json.params);
+    setU("params", {
+      iso: json.params.iso || 'wor',
+      lng: json.params.lng || 'en',
+      prj: json.params.prj || 'nat',
+    });
     setU("connected", true);
   } else {
     uLogOut();
@@ -95,32 +98,6 @@ export const uSaveParams = async (params) => {
 
 export const uSaveGame = async (type, time, accuracy) => {
   const res = await post('/api/um/savegame', { type, time, accuracy });
-  if (!is2xx(res)) {
-    throw await res.text();
-  }
-  return await res.json();
-}
-
-export const getGameHighest = async (type) => {
-  const res = await fetch('/api/um/gethighest/' + type);
-  if (!is2xx(res)) {
-    throw await res.text();
-  }
-  return await res.json();
-}
-
-export const getGameLeaderboards = async (type) => {
-  const res = await fetch('/api/um/leaderboards/' + type);
-  if (!is2xx(res)) {
-    throw await res.text();
-  }
-  return await res.json();
-}
-
-export const getStats = async (uname) => {
-  // await uTryLog();
-  // const res = await post('/api/um/stats', { type });
-  const res = await fetch('/api/um/stats/' + uname);
   if (!is2xx(res)) {
     throw await res.text();
   }

@@ -1,6 +1,9 @@
 ////////////////////
 ///// GEOMETRY /////
 ////////////////////
+Number.prototype.clamp = function(min, max) {
+  return Math.min(Math.max(this, min), max);
+};
 const isInBounds = (coord, bnd) => bnd[0] < coord[0] && bnd[2] > coord[0] && bnd[1] < coord[1] && bnd[3] > coord[1];
 const onSegment = (p, q, r) => q[0] <= Math.max(p[0], r[0]) && q[0] >= Math.min(p[0], r[0]) && q[1] <= Math.max(p[1], r[1]) && q[1] >= Math.min(p[1], r[1])
 const ori = (p, q, r) => {
@@ -156,23 +159,66 @@ class Program {
 ///////////////////
 const shdsrc_countries = [
   `#version 300 es
+  #define M_PI 3.1415926535897932384626433832795
 
   uniform float uratio;
   uniform float uviewrange;
   uniform float uxoffset;
   uniform vec2  ucenterpoint;
   uniform float ucrad;
+  uniform int uprojection;
 
   in vec2 acoord;
 
-  void main() {
-      vec2 ccoord = vec2(
-          (acoord.x - ucenterpoint.x + uxoffset * 360.0),
-          (acoord.y - ucenterpoint.y) * uratio
-      ) * 2.0 / uviewrange;
+  vec2 project(vec2 coord) {
 
-      gl_Position = vec4(ccoord, 0, 1);
-      gl_PointSize = ucrad * 180.0 / uviewrange;
+    vec2 ll = coord * M_PI / 180.0;
+    vec2 ll0 = ucenterpoint * M_PI / 180.0;
+
+    if (uprojection == 1) {
+      return vec2(
+        coord[0],
+        sign(ll[1]) * log(tan(M_PI / 4.0 + clamp(abs(ll[1]), 0.0, M_PI / 2.0 - 0.05) / 2.0)) * 180.0 / M_PI
+      );
+    } else if (uprojection == 2) {
+      return vec2(
+        coord[0],
+        (1.0 + sqrt(2.0)) * tan(ll[1] / 2.0) * 180.0 / M_PI
+      );
+    } else if (uprojection == 3) {
+      return vec2(
+        coord[0],
+        asin(coord[1] / 90.0) * 90.0
+      );
+    } else if (uprojection == 4) {
+      return vec2(
+        (coord[0] - ucenterpoint[0]) * cos(ll[1]),
+        coord[1]
+      );
+    } else if (uprojection == 5) {
+      float alpha = 1.0 + cos(ll[1] - ll0[1]) + cos(ll0[1]) * cos(ll[1]) * (cos(ll[0] - ll0[0]) - 1.0);
+      return 50.0 * sqrt(2.0 / alpha) * vec2(
+        cos(ll[1]) * sin(ll[0] - ll0[0]),
+        sin(ll[1] - ll0[1]) - sin(ll0[1]) * cos(ll[1]) * (cos(ll[0] - ll0[0]) - 1.0)
+      );
+    }
+    return coord;
+  }
+
+  void main() {
+    vec2 projected = project(acoord + vec2(uxoffset * 360.0, 0.0));
+    
+    if (uprojection != 4 && uprojection != 5) {
+      projected = projected - ucenterpoint;
+    }
+
+    vec2 ccoord = vec2(
+      projected[0],
+      projected[1] * uratio
+    ) * 2.0 / uviewrange;
+
+    gl_Position = vec4(ccoord, 0, 1);
+    gl_PointSize = ucrad * 180.0 / uviewrange;
   }`,
 
   `#version 300 es
@@ -185,7 +231,7 @@ const shdsrc_countries = [
   out vec4 color;
 
   void main() {
-      color = vec4(ucol, uopacity);
+    color = vec4(ucol, uopacity);
   }`
 ]
 
@@ -201,13 +247,13 @@ const shdsrc_circles = [
   out vec2 careal;
 
   void main() {
-      vec2 ccoord = vec2(
-          (cacoord.x - cucenterpoint.x + cuxoffset * 360.0),
-          (cacoord.y - cucenterpoint.y) * curatio
-      ) * 2.0 / cuviewrange;
+    vec2 ccoord = vec2(
+      (cacoord[0] - cucenterpoint[0] + cuxoffset * 360.0),
+      (cacoord[1] - cucenterpoint[1]) * curatio
+    ) * 2.0 / cuviewrange;
 
-      careal = cacoord;
-      gl_Position = vec4(ccoord, 0, 1);
+    careal = cacoord;
+    gl_Position = vec4(ccoord, 0, 1);
   }`,
 
   `#version 300 es
@@ -223,16 +269,25 @@ const shdsrc_circles = [
   out vec4 color;
 
   void main() {
-      color = vec4(1);
-      vec2 d = careal - cucenter;
-      float r = sqrt(dot(d, d)) / cucrad;
+    color = vec4(1);
+    vec2 d = careal - cucenter;
+    float r = sqrt(dot(d, d)) / cucrad;
 
-      if (r > 1.0) discard;
-      
-      if (cucity == uint(1)) color = vec4(cucol, cuopacity * (1.0 - pow(r, 20.0)));
-      else color = vec4(cucol, cuopacity);
+    if (r > 1.0) discard;
+    
+    if (cucity == uint(1)) color = vec4(cucol, cuopacity * (1.0 - pow(r, 20.0)));
+    else color = vec4(cucol, cuopacity);
   }`
 ]
+
+const projections = {
+  wgs: 0,   // WGS84
+  mct: 1,   // MERCATOR
+  str: 2,   // STEREOGRAPHIC
+  nat: 3,   // NATURAL
+  sin: 4,   // SINUSOIDAL
+  lmb: 5    // LAMBERT
+}
 
 export class Map {
   /**
@@ -242,33 +297,17 @@ export class Map {
    * @param {function} onhover 
    * @param {function} onclick 
    */
-  constructor(data, game, onhover, onclick) {
+  constructor(data, game, onhover, onclick, projection = "mct") {
 	  this.data = data;
-    this.canvas = document.getElementById("appcanvas");
-
-    this.onclick = onclick;
-    this.onhover = onhover;
     this.game = game;
+    this.onhover = onhover;
+    this.onclick = onclick;
+
+    this.canvas = document.getElementById("appcanvas");
 
     this.lasttime = Date.now();
     this.lastsecond = Math.floor(this.lasttime / 1000);
 
-    this.moletteiterations = 6;
-    this.molette = new Transition(8, this.moletteiterations / 2);
-    this.lastmousepos = [ 0, 0 ];
-    this.lastmousemov = [ 0, 0 ];
-    this.mousepos     = [ -1, -1 ];
-    this.mouseinerty  = [ 0, 0 ];
-
-    this.centerpoint = game.regioncenter 
-      ? game.regioncenter 
-      : (game.regionlimits 
-        ? [ (game.regionlimits[0] + game.regionlimits[2]) / 2, (game.regionlimits[1] + game.regionlimits[3]) / 2 ] 
-        : [ 0, 0 ]);
-
-    this.iszooming = false;
-    this.ismoving = false;
-    this.zoominglockcoords = [ 0, 0 ];
     this.flashcol = 0;
     this.shaketimer = 0;
 
@@ -281,41 +320,60 @@ export class Map {
     this.helpCityId = -1;
 
     this.grid_divisions = [ 18, 9 ];
+    this.grid = {
+      divsize: 10,  // size of a division
+      divsubdiv: 3  // number of subdivisions (graphical quality of grid)
+    }
+    this.determineGridSettings();
 
     // colors
     this.colors = {};
     const stl = getComputedStyle(document.documentElement)
     for (const prop of [ "white", "lblue", "dblue", "black", "vermi" ])
       this.colors[prop] = hextorgb(stl.getPropertyValue("--color-" + prop));
-    // this.colors = { sea: hextorgb("#11728C"),                                  zone: hextorgb("#C3D19D"), hovering: hextorgb("#ffffff"), border: hextorgb("#ffffff") }
 
     for (const zone of this.data.zones) {
       zone.color = mixcol(this.colors.black, new Array(3).fill(Math.random()), Math.random() / 3.5);
       let needsline = game.region.length == 3;
       for (const plg of zone.geometry) needsline = needsline && plg.area < 0.3;
       for (const plg of zone.geometry) plg.needsline = needsline;
-      // totalarea < (this.game.minareaforborder || 0.09)
     }
-
-    // console.log(this.data)
 
     // debug infos
     this.fps = [];
     this.efps = document.getElementById("fps");
     this.emousecoords = document.getElementById("mousecoords");
 
-    // events
-    window.addEventListener("resize", () =>    this.resize())
-    this.canvas.addEventListener("mousewheel", e => this.zoom(e.deltaY));
-    this.canvas.addEventListener("DOMMouseScroll", e => this.zoom(e.detail * 20));
-    this.canvas.addEventListener("mousedown", e  => this.mousedown(e));
-    this.canvas.addEventListener("mouseup", e =>    this.mouseup(e));
-    this.canvas.addEventListener("mousemove", e =>  this.mousemove(e));
+    // camera
+    this.cam = {
+      prj: projection,
+      cp: game.regioncenter || (game.regionlimits 
+        ? [ (game.regionlimits[0] + game.regionlimits[2]) / 2, (game.regionlimits[1] + game.regionlimits[3]) / 2 ] 
+        : [ 0, 0 ]),
+      vr: 0
+    }
+    this.cam.cp = this.project(...this.cam.cp);
 
     this.resize();
+
+    // movement
+    this.mv = {
+      moletteiterations: 6,
+      molette: new Transition(8, 6 / 2),
+      lastmousemov: [ 0, 0 ],
+      mousepos: [ this.width / 2, this.height / 2 ],
+      mouseinertia: [ 0, 0 ],
+      iszooming: false,
+      ismoving: false,
+      zoominglockcoords: [ 0, 0 ]
+    };
+
+    if ("beginningviewrange" in game) {
+      this.mv.molette.from = this.mv.molette.to = this.mv.molette.value
+      = Math.sqrt((game.beginningviewrange - game.viewranges[0]) * Math.pow(this.mv.moletteiterations, 2) / (game.viewranges[1] - game.viewranges[0])) - this.mv.moletteiterations / 2
+    }
+
     this.calcviewrange();
-    if ("beginningviewrange" in game) this.molette.from = this.molette.to = this.molette.value
-      = Math.sqrt((game.beginningviewrange - game.viewranges[0]) * Math.pow(this.moletteiterations, 2) / (game.viewranges[1] - game.viewranges[0])) - this.moletteiterations / 2
 
     this.init_gl();
     this.createGridVBOs();
@@ -324,6 +382,78 @@ export class Map {
     this.createCitiesVBO();
 
     this.update();
+
+    // events
+    window.addEventListener("resize", () =>    this.resize())
+    this.canvas.addEventListener("mousewheel", e => this.zoom(e.deltaY));
+    this.canvas.addEventListener("DOMMouseScroll", e => this.zoom(e.detail * 20));
+    this.canvas.addEventListener("mousedown", e  => this.mousedown(e));
+    this.canvas.addEventListener("mouseup", e =>    this.mouseup(e));
+    this.canvas.addEventListener("mousemove", e =>  this.mousemove(e));
+  }
+
+
+  project(lon, lat) {
+    const λ = lon * Math.PI / 180;
+    const φ = lat * Math.PI / 180;
+
+    const λ0 = this.cam.cp[0] * Math.PI / 180;
+    const φ0 = this.cam.cp[1] * Math.PI / 180;
+
+    if (this.cam.prj == "nat") {
+      return [ lon, Math.asin(lat / 90) * 90 ];
+    } if (this.cam.prj == "mct") {
+      return [ lon, Math.sign(φ) * Math.log(Math.tan(Math.PI / 4 + (Math.abs(φ)).clamp(0, Math.PI / 2 - 0.05) / 2)) * 180 / Math.PI ];
+    } else if (this.cam.prj == "str") {
+      return [ lon, (1 + Math.sqrt(2)) * Math.tan(φ / 2) * 180 / Math.PI ];
+    } else if (this.cam.prj == "sin") {
+      return [ (lon - this.cam.cp[0]) * Math.cos(φ), lat ]
+    } else if (this.cam.prj == "lmb") {
+      const alpha = 1 + Math.cos(φ - φ0) + Math.cos(φ0) * Math.cos(φ) * (Math.cos(λ - λ0) - 1);
+      return [
+        50 * Math.sqrt(2 / alpha) * (Math.cos(φ) * Math.sin(λ - λ0)),
+        50 * Math.sqrt(2 / alpha) * (Math.sin(φ - φ0) - Math.sin(φ0) * Math.cos(φ) * (Math.cos(λ - λ0) - 1))
+      ];
+    }
+    return [ lon, lat ];
+  }
+
+  projectInv(a, b) {
+    if (this.cam.prj == "nat") {
+      return [ a, Math.sin(b / 90) * 90 ];
+    } if (this.cam.prj == "mct") {
+      const φ = (Math.atan(Math.exp(b * Math.PI / 180)) - Math.PI / 4) * 2
+      return [ a, φ * 180 / Math.PI ];
+    } else if (this.cam.prj == "str") {
+      return [ a, Math.atan(b * Math.PI / (180 * (1 + Math.sqrt(2)))) * 2 * 180 / Math.PI ]
+    } else if (this.cam.prj == "sin") {
+      const φ = b * Math.PI / 180;
+      return [ a / Math.cos(φ) + this.cam.cp[0], b ]
+    }
+    return [ a, b ]
+  }
+
+  canvasToCoord(c) {
+    const x = c[0] || c[0];
+    const y = c[1] || c[1];
+    if (this.cam.prj != "sin" && this.cam.prj != "lmb") {
+      return this.projectInv(
+        modx((x / this.width - 0.5) * this.cam.vr + this.cam.cp[0]),
+        this.cam.cp[1] - (y / this.width - this.height / this.width * 0.5) * this.cam.vr
+      )
+    }
+    return this.projectInv(
+      modx((x / this.width - 0.5) * this.cam.vr),
+      -(y / this.width - this.height / this.width * 0.5) * this.cam.vr
+    )
+  }
+
+  coordToCanvas(c) {
+    const [ x, y ] = this.project(...c);
+    return [
+      (x / this.cam.vr + 0.5) * this.width,
+      - (y / this.cam.vr + this.height / this.width * 0.5) * this.width
+    ]
   }
 
   init_gl() {
@@ -337,7 +467,7 @@ export class Map {
 
     // countries
     this.pco = new Program(this.gl, ...shdsrc_countries);
-    this.pco.uniformlocations(this.gl, [ "ucol", "ucrad", "uratio", "uopacity", "uxoffset", "uviewrange", "ucenterpoint" ])
+    this.pco.uniformlocations(this.gl, [ "ucol", "ucrad", "uratio", "uopacity", "uxoffset", "uviewrange", "ucenterpoint", "uprojection" ])
     this.pco.attriblocations(this.gl, [ "acoord" ])
 
     // circles
@@ -349,60 +479,100 @@ export class Map {
     this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA)
   }
 
+  determineGridSettings() {
+    var xmax = 0, xiter = 0;
+    while (xmax + this.grid.divsize <= 180) {
+      xmax += this.grid.divsize;
+      xiter += 1;
+    }
+    var ymax = 0, yiter = 0;
+    while (ymax + this.grid.divsize <= 90) {
+      ymax += this.grid.divsize;
+      yiter += 1;
+    }
+    this.grid.raysmin = [ -xmax, -ymax ]
+    this.grid.rays = [ xiter * 2 + 1, yiter * 2 + 1 ]
+    this.grid.subrays = [
+      (this.grid.rays[1] - 1) * this.grid.divsubdiv + 1,
+      (this.grid.rays[0] - 1) * this.grid.divsubdiv + 1,
+    ]
+  }
+
   createGridVBOs() {
-    const grid_verticesx = [];
-    for (let i = 0; i <= this.grid_divisions[0]; i++) {
-      const x = i * 360 / this.grid_divisions[0] - 180
-      grid_verticesx.push(x, 100000, x, -100000)
+    const verticalRaysVertices = [];
+    for (let xi = 0; xi < this.grid.rays[0]; xi++) {
+      const x = this.grid.raysmin[0] + xi * this.grid.divsize;
+      for (let yi = 0; yi < this.grid.subrays[0]; yi++) {
+        const y = this.grid.raysmin[1] + yi * this.grid.divsize / this.grid.divsubdiv;
+        verticalRaysVertices.push(x, y)
+      }
     }
 
-    const grid_verticesy = [];
-    for (let i = 0; i <= this.grid_divisions[1]; i++) {
-      const y = Math.asin((i * 180 / this.grid_divisions[1] - 90) / 90) * 90;
-      grid_verticesy.push(-100000, y, 100000, y)
+    const horizontalRaysVertices = [];
+    for (var yi = 0; yi < this.grid.rays[1]; yi++) {
+      const y = this.grid.raysmin[1] + yi * this.grid.divsize;
+      for (let xi = 0; xi < this.grid.subrays[1]; xi++) {
+        const x = this.grid.raysmin[0] + xi * this.grid.divsize / this.grid.divsubdiv;
+        horizontalRaysVertices.push(x, y)
+      }
     }
 
-    this.grid_vbox = this.gl.createVertexArray();
-    this.gl.bindVertexArray(this.grid_vbox);
-    const gvaox = this.gl.createBuffer();
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, gvaox);
-    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(grid_verticesx), this.gl.STATIC_DRAW);
+    this.vgridVBO = this.gl.createVertexArray();
+    this.gl.bindVertexArray(this.vgridVBO);
+    const vgridVAO = this.gl.createBuffer();
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, vgridVAO);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(verticalRaysVertices), this.gl.STATIC_DRAW);
     this.gl.vertexAttribPointer(this.pco.a.acoord, 2, this.gl.FLOAT, false, 8, 0);
     this.gl.enableVertexAttribArray(this.pco.a.acoord);
 
-    this.grid_vboy = this.gl.createVertexArray();
-    this.gl.bindVertexArray(this.grid_vboy);
-    const gvaoy = this.gl.createBuffer();
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, gvaoy);
-    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(grid_verticesy), this.gl.STATIC_DRAW);
+    this.hgridVBO = this.gl.createVertexArray();
+    this.gl.bindVertexArray(this.hgridVBO);
+    const hgridVAO = this.gl.createBuffer();
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, hgridVAO);
+    this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(horizontalRaysVertices), this.gl.STATIC_DRAW);
     this.gl.vertexAttribPointer(this.pco.a.acoord, 2, this.gl.FLOAT, false, 8, 0);
     this.gl.enableVertexAttribArray(this.pco.a.acoord);
+  }
+
+  drawGrid(offsets) {
+    this.gl.uniform1f(this.pco.u.uopacity, 1);
+    this.gl.uniform3f(this.pco.u.ucol, ...mixcol(this.colors.lblue, this.colors.black, 0.1));
+    for (const offset of offsets) {
+      this.gl.uniform1f(this.pco.u.uxoffset, offset);
+      this.gl.bindVertexArray(this.vgridVBO);
+      for (var i = 0; i < this.grid.rays[0]; i++) {
+        this.gl.drawArrays(this.gl.LINE_STRIP, i * this.grid.subrays[0], this.grid.subrays[0]);
+      }
+      this.gl.bindVertexArray(this.hgridVBO);
+      for (var i = 0; i < this.grid.rays[1]; i++) {
+        this.gl.drawArrays(this.gl.LINE_STRIP, i * this.grid.subrays[1], this.grid.subrays[1]);
+      }
+    }
   }
 
   createGeometryVBO() {
     let vertices = new Float32Array((this.data.zvcount + this.data.lvcount) * 2);
     let indices = new Uint16Array(this.data.zicount + this.data.licount);
     let vi = 0, ii = 0;
+    var proj;
 
-    for (const lake of this.data.lakes) {
-      for (const c of lake.plg) {
+    const pushGeometry = (geometry) => {
+      for (const c of geometry.plg) {
         vertices[vi++] = c[0];
         vertices[vi++] = c[1];
       }
-      for (const index of lake.indices) {
+      for (const index of geometry.indices) {
         indices[ii++] = index;
-	    }
+      }
+    }
+
+    for (const lake of this.data.lakes) {
+      pushGeometry(lake);
     }
 	
     for (const zone of this.data.zones) {
       for (const geometry of zone.geometry) {
-        for (const c of geometry.plg) {
-          vertices[vi++] = c[0];
-          vertices[vi++] = c[1];
-        }
-        for (const index of geometry.indices) {
-          indices[ii++] = index;
-		    }
+        pushGeometry(geometry)
       }
     }
 
@@ -422,25 +592,35 @@ export class Map {
     const dr = 8; // default radius
     let vertices = [];
     let id = 0;
+
     const addpoint = p => {
+      const [ x, y ] = this.project(...p);
       vertices.push(
-        p[0] - dr, p[1] - dr,
-        p[0] + dr, p[1] - dr,
-        p[0] + dr, p[1] + dr,
-        p[0] - dr, p[1] - dr,
-        p[0] + dr, p[1] + dr,
-        p[0] - dr, p[1] + dr
+        x - dr, y - dr,
+        x + dr, y - dr,
+        x + dr, y + dr,
+        x - dr, y - dr,
+        x + dr, y + dr,
+        x - dr, y + dr
       )
     }
 
+    let minPop = Infinity, maxPop = 0;
     for (const city of this.data.cities) {
       city.on = false;
       city.id = id++;
-      city.crad = 2 + Math.pow(city.pop, 1/4) / 10;
-      //if (!city.pop) { city.crad = 5; };
-      if (this.game.region.length == 3) city.crad /= 4;
-      if (this.data.craddividor) city.crad /= this.data.craddividor;
+      minPop = Math.min(minPop, city.pop);
+      maxPop = Math.max(maxPop, city.pop);
       addpoint(city.coords);
+      //if (!city.pop) { city.crad = 5; };
+      // if (this.game.region.length == 3) city.crad /= 4;
+      // if (this.data.craddividor) city.crad /= this.data.craddividor;
+    }
+    var transform = pop => Math.pow(pop, 1/4);
+    var minpt = transform(minPop), maxpt = transform(maxPop);
+    for (const city of this.data.cities) {
+      // city.crad = 2 + Math.pow(city.pop, 1/4) / 10;
+      city.crad = 0.5 + 1.5 * (transform(city.pop) - minpt) / (maxpt - minpt);
     }
 
     this.points_vbo = this.gl.createVertexArray();
@@ -455,14 +635,16 @@ export class Map {
   createIslandsVBO() {
     const dr = 8; // default radius
     let vertices = [];
+
     const addpoint = p => {
+      const [ x, y ] = this.project(...p);
       vertices.push(
-        p[0] - dr, p[1] - dr,
-        p[0] + dr, p[1] - dr,
-        p[0] + dr, p[1] + dr,
-        p[0] - dr, p[1] - dr,
-        p[0] + dr, p[1] + dr,
-        p[0] - dr, p[1] + dr
+        x - dr, y - dr,
+        x + dr, y - dr,
+        x + dr, y + dr,
+        x - dr, y - dr,
+        x + dr, y + dr,
+        x - dr, y + dr
       )
     }
 
@@ -485,53 +667,41 @@ export class Map {
   }
 
   calcviewrange() {
-    this.viewrange = Math.pow(this.molette.value / this.moletteiterations + 0.5, 2) * (this.game.viewranges[1] - this.game.viewranges[0]) + this.game.viewranges[0]; // width
-    // viewrange height is viewrange / width * height
-    if (this.viewrange * this.height / this.width > Math.PI * 85) this.viewrange = Math.PI * 85 * this.width / this.height
+    this.cam.vr = (Math.pow(this.mv.molette.value / this.mv.moletteiterations + 0.5, 2) * (this.game.viewranges[1] - this.game.viewranges[0]) + this.game.viewranges[0]);
+
+    // clamping to prevent zoom out
+    if (this.cam.prj == "nat") {
+      // viewrange height is viewrange / width * height
+      if (this.cam.vr * this.height / this.width > Math.PI * 85) this.cam.vr = Math.PI * 85 * this.width / this.height;
+    } else {
+      const [ _1, maxy ] = this.canvasToCoord([ 0, 0 ])
+      const [ _2, miny ] = this.canvasToCoord([ 0, this.height ])
+      if (maxy - miny > 180) {
+        this.cam.vr *= 180 / (maxy - miny)
+      }
+    }
   }
 
   beginviewrange(vr) {
-    this.molette.restartFrom((Math.sqrt((vr - this.game.viewranges[0]) / (this.game.viewranges[1] - this.game.viewranges[0])) - 0.5) * this.moletteiterations);
-  }
-
-  begincenterpoint(cp) {
-    this.centerpoint = cp;
-    this.updateMovement();
+    this.mv.molette.restartFrom((Math.sqrt((vr - this.game.viewranges[0]) / (this.game.viewranges[1] - this.game.viewranges[0])) - 0.5) * this.mv.moletteiterations);
   }
 
   recenter() {
-    // x  
-    if (this.game.regionlimits[2] - this.viewrange / 2 < this.game.regionlimits[0] + this.viewrange / 2) this.centerpoint[0] = (this.game.regionlimits[0] + this.game.regionlimits[2]) / 2;
-    else this.centerpoint[0] = Math.min(this.game.regionlimits[2] - this.viewrange / 2, Math.max(this.game.regionlimits[0] + this.viewrange / 2, this.centerpoint[0]));
-    
+    // x
+    if (this.game.regionlimits[2] - this.cam.vr / 2 < this.game.regionlimits[0] + this.cam.vr / 2) this.cam.cp[0] = (this.game.regionlimits[0] + this.game.regionlimits[2]) / 2;
+    else this.cam.cp[0] = Math.min(this.game.regionlimits[2] - this.cam.vr / 2, Math.max(this.game.regionlimits[0] + this.cam.vr / 2, this.cam.cp[0]));
+
     // y
-    const miny = Math.asin(this.game.regionlimits[1] / 90) * 90;
-    const maxy = Math.asin(this.game.regionlimits[3] / 90) * 90;
-    const vrh = this.viewrange / 2 * this.height / this.width;
-    if (maxy - vrh < miny + vrh) this.centerpoint[1] = (miny + maxy) / 2;
-    else this.centerpoint[1] = Math.min(maxy - vrh, Math.max(miny + vrh, this.centerpoint[1]));
+    const miny = this.project(0, this.game.regionlimits[1])[1];
+    const maxy = this.project(0, this.game.regionlimits[3])[1];
+    const vrh = this.cam.vr / 2 * this.height / this.width;
+    if (maxy - vrh < miny + vrh) this.cam.cp[1] = (miny + maxy) / 2;
+    else this.cam.cp[1] = Math.min(maxy - vrh, Math.max(miny + vrh, this.cam.cp[1]));
   }
 
   resize() {
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
-    this.canvas.width = this.width;
-    this.canvas.height = this.height;
-    if (this.mousepos[0] == -1 && this.mousepos[1] == -1) this.mousepos = [ this.width / 2, this.height / 2 ]
-  }
-
-  coordsToCanvas(c) {
-    return [
-      (modx(c[0] - this.centerpoint[0]) / this.viewrange + 0.5) * this.width,
-      ((this.centerpoint[1] - c[1]) / this.viewrange + this.height / this.width * 0.5) * this.width,
-    ]
-  };
-
-  canvasToCoord(c) {
-    return [
-      modx((c[0] / this.width - 0.5) * this.viewrange + this.centerpoint[0]),
-      this.centerpoint[1] - (c[1] / this.width - this.height / this.width * 0.5) * this.viewrange
-    ]
+    this.canvas.width = this.width = this.canvas.clientWidth;
+    this.canvas.height = this.height = this.canvas.clientHeight;
   }
 
   getZoneHoveringState(id) {
@@ -547,17 +717,23 @@ export class Map {
   }
 
   drawAll() {
-    const offset = this.shaketimer == 0 ? 0 : Math.asin(-this.shaketimer / this.shaketimeanim) * Math.sin(this.shaketimer / 30) * this.viewrange / 100;
-    const cp = [ this.centerpoint[0] + offset, this.centerpoint[1] ];
-    const minx = cp[0] - this.viewrange / 2;
-    const miny = cp[1] - this.viewrange / 2 * this.height / this.width;
-    const maxx = cp[0] + this.viewrange / 2;
-    const maxy = cp[1] + this.viewrange / 2 * this.height / this.width;
-    const isOnScreen = (bnd, xoffset = 0) => bnd[0] + xoffset * 360 < maxx && bnd[2] + xoffset * 360 > minx && bnd[1] < maxy && bnd[3] > miny;
+    const offset = this.shaketimer == 0 ? 0 : Math.asin(-this.shaketimer / this.shaketimeanim) * Math.sin(this.shaketimer / 30) * this.cam.vr / 100;
+    const cp = [ this.cam.cp[0] + offset, this.cam.cp[1] ];
+    var minx = cp[0] - this.cam.vr / 2;
+    var miny = cp[1] - this.cam.vr / 2 * this.height / this.width;
+    var maxx = cp[0] + this.cam.vr / 2;
+    var maxy = cp[1] + this.cam.vr / 2 * this.height / this.width;
+    const isOnScreen = (bnd, xoffset = 0) => {
+      const [ x0, y0 ] = this.project(bnd[0], bnd[1]);
+      const [ x1, y1 ] = this.project(bnd[2], bnd[3]);
+      return x0 + xoffset * 360 < maxx && x1 + xoffset * 360 > minx && y0 < maxy && y1 > miny;
+    }
 
-    // draw twice cuz the earth is a cylinder
-    const beginning = cp[0] - this.viewrange / 2 < -180 ? -1 : 0;
-    const end = cp[0] + this.viewrange / 2 > 180 ? 2 : 1;
+    // draw twice because Earth is a cylinder
+    const beginning = cp[0] - this.cam.vr / 2 < -180 ? -1 : 0;
+    const end = cp[0] + this.cam.vr / 2 > 180 ? 2 : 1;
+    const offsets = [];
+    for (let a = beginning; a < end; a++) offsets.push(a);
 
     this.gl.viewport(0, 0, this.width, this.height);
     this.gl.clearColor(...this.colors.lblue, 1);
@@ -566,24 +742,17 @@ export class Map {
     // basic uniforms
     this.pci.use(this.gl);
     this.gl.uniform1f(this.pci.u.curatio, this.width / this.height);
-    this.gl.uniform1f(this.pci.u.cuviewrange, this.viewrange);
+    this.gl.uniform1f(this.pci.u.cuviewrange, this.cam.vr);
     this.gl.uniform2f(this.pci.u.cucenterpoint, cp[0], cp[1]);
-
+    
     this.pco.use(this.gl);
     this.gl.uniform1f(this.pco.u.uratio, this.width / this.height);
-    this.gl.uniform1f(this.pco.u.uviewrange, this.viewrange);
+    this.gl.uniform1f(this.pco.u.uviewrange, this.cam.vr);
     this.gl.uniform2f(this.pco.u.ucenterpoint, cp[0], cp[1]);
+    this.gl.uniform1i(this.pco.u.uprojection, projections[this.cam.prj]);
 
     // drawing grid
-    this.gl.uniform1f(this.pco.u.uopacity, 1);
-    this.gl.uniform3f(this.pco.u.ucol, ...mixcol(this.colors.lblue, this.colors.black, 0.1));
-    this.gl.bindVertexArray(this.grid_vbox);
-    for (let a = beginning; a < end; a++) {
-      this.gl.uniform1f(this.pco.u.uxoffset, a);
-      this.gl.drawArrays(this.gl.LINE_STRIP, 0, this.grid_divisions[0] * 2 + 1);
-    }
-    this.gl.bindVertexArray(this.grid_vboy);
-    this.gl.drawArrays(this.gl.LINE_STRIP, 0, this.grid_divisions[1] * 2 + 1);
+    this.drawGrid(offsets);
 
     // islands: round shape above the sea and under the other countries
     if (!"bde".includes(this.game.type)) {
@@ -600,13 +769,13 @@ export class Map {
           this.gl.uniform3f(this.pci.u.cucol, ...mixcol(this.colors.lblue, this.colors.white, 0.2 * hs))
           for (let i = 0; i < zone.islands.length; i++) {
             this.gl.uniform1f(this.pci.u.cucrad, this.irad * (0.5 + hs / 2) * (zone.islands[i].length == 3 ? zone.islands[i][2] : 1));
-            this.gl.uniform2f(this.pci.u.cucenter, zone.islands[i][0], zone.islands[i][1]);
+            this.gl.uniform2f(this.pci.u.cucenter, ...this.project(zone.islands[i][0], zone.islands[i][1]));
             this.gl.drawArrays(this.gl.TRIANGLES, (zone.pointstart + i) * 6, 6);
           }
         }
       }
-      for (let a = beginning; a < end; a++) {
-        this.gl.uniform1f(this.pci.u.cuxoffset, a);
+      for (const offset of offsets) {
+        this.gl.uniform1f(this.pci.u.cuxoffset, offset);
         for (const c of this.hoveredZones.previous) di(c[0]);
         di(this.hoveredZones.current[0])
       }
@@ -618,9 +787,9 @@ export class Map {
     const drawzone = zone => {
       let hs = this.getZoneHoveringState(zone.info.id);
       if (hs != -1 && this.hoveredZones.current[0] == zone.info.id) hs = 1;
-      for (const geometry of zone.geometry) for (let a = beginning; a < end; a++) {
-        if (isOnScreen(geometry.bnd, a)) {
-          this.gl.uniform1f(this.pco.u.uxoffset, a);
+      for (const geometry of zone.geometry) for (const offset of offsets) {
+        if (isOnScreen(geometry.bnd, offset)) {
+          this.gl.uniform1f(this.pco.u.uxoffset, offset);
 
           // inside
           this.gl.uniform1f(this.pco.u.uopacity, 1);
@@ -644,14 +813,15 @@ export class Map {
         }
       }
     }
+
     for (const zone of this.data.zones) if (!zone.enclave && zone.hs != 1 && !zone.hovered) { drawzone(zone);  }
     for (const zone of this.data.zones) if (zone.hovered) drawzone(zone);
     for (const zone of this.data.zones) if ( zone.enclave && zone.hs != 1 && !zone.hovered) drawzone(zone);
-
+    
     // lakes
     for (const lake of this.data.lakes) {
-      for (let a = beginning; a < end; a++) {
-        this.gl.uniform1f(this.pco.u.uxoffset, a);
+      for (const offset of offsets) {
+        this.gl.uniform1f(this.pco.u.uxoffset, offset);
 
         this.gl.uniform1f(this.pco.u.uopacity, 1);
         this.gl.uniform3f(this.pco.u.ucol, ...this.colors.lblue);
@@ -675,35 +845,35 @@ export class Map {
       if (hs != -1) {
         this.gl.uniform3f(this.pci.u.cucol, ...mixcol(zone.color, this.colors.white, 0.5 * hs))
         this.gl.uniform1f(this.pci.u.cucrad, this.irad * (0.5 + hs / 2) * 0.6 * zone.forced);
-        this.gl.uniform2f(this.pci.u.cucenter, zone.center[0], zone.center[1]);
+        this.gl.uniform2f(this.pci.u.cucenter, ...this.project(zone.center[0], zone.center[1]));
         this.gl.drawArrays(this.gl.TRIANGLES, zone.pointstart * 6, 6);
       }
     }
-    for (let a = beginning; a < end; a++) {
-      this.gl.uniform1f(this.pci.u.cuxoffset, a);
+    for (const offset of offsets) {
+      this.gl.uniform1f(this.pci.u.cuxoffset, offset);
       for (const c of this.hoveredZones.previous) df(c[0]);
       df(this.hoveredZones.current[0])
     }
 
     // cities
     // this.gl.uniform1ui(this.pci.u.cucity, 1);
-    const scale = Math.pow(this.viewrange / 1000000, 0.7) * 150;
+    const scale = Math.pow(this.cam.vr / 1000000, 0.7) * 150;
     if (this.game.mode == "e" || "bde".includes(this.game.type)) {
       this.gl.bindVertexArray(this.points_vbo);
-      for (let a = beginning; a < end; a++) {
-        this.gl.uniform1f(this.pci.u.cuxoffset, a);
+      for (const offset of offsets) {
+        this.gl.uniform1f(this.pci.u.cuxoffset, offset);
         for (const city of this.data.cities) if (city.on) {
           const helpMultiplier = this.helpCityId == city.id ? 0.5 + 0.5 * Math.sin(this.now / 200) : 0;
           let hs = this.getCityHoveringState(city.id);
           const rad = city.crad * (hs == -1 ? 1 : 1 + 0.5 * Math.sin(Math.PI / 2 * hs)) * (1 + 0.7 * helpMultiplier);
-          if (isOnScreen([ city.coords[0] - rad, city.coords[1] - rad, city.coords[0] + rad, city.coords[1] + rad ], a)) {
+          if (isOnScreen([ city.coords[0] - rad, city.coords[1] - rad, city.coords[0] + rad, city.coords[1] + rad ], offset)) {
             if (hs == -1 && city.id == this.hoveredCities.current[0]) hs = 1;
             let citycol = hs == -1 || this.game.mode == "e" ? this.colors.white : mixcol(this.colors.white, this.colors.vermi, Math.sin(Math.PI / 2 * hs));
             if (helpMultiplier != 0) citycol = mixcol(citycol, [ 0, 1, 0 ], (0.5 + 0.5 * helpMultiplier));
             this.gl.uniform1f(this.pci.u.cuopacity, hs == -1 ? 0.5 : 0.5 * (1 + Math.sin(Math.PI / 2 * hs)));
             this.gl.uniform3f(this.pci.u.cucol, ...citycol);
             this.gl.uniform1f(this.pci.u.cucrad, rad * scale);
-            this.gl.uniform2f(this.pci.u.cucenter, city.coords[0], city.coords[1])
+            this.gl.uniform2f(this.pci.u.cucenter, ...this.project(city.coords[0], city.coords[1]))
             this.gl.drawArrays(this.gl.TRIANGLES, city.id * 6, 6);
           }
         }
@@ -770,26 +940,28 @@ export class Map {
   updateMovement() {
     if (this.isaclick) return;
 
-    const centerpointbefore = [this.centerpoint[0], this.centerpoint[1]];
-    this.iszooming = this.molette.update() && this.molette.value + 0.05 < this.moletteiterations / 2;
+    const centerpointbefore = [this.cam.cp[0], this.cam.cp[1]];
+    this.mv.iszooming = this.mv.molette.update() && this.mv.molette.value + 0.05 < this.mv.moletteiterations / 2;
     this.calcviewrange();
-    if (this.iszooming) {
-      this.centerpoint[0] = this.zoominglockcoords[0] - (this.mousepos[0] / this.width - 0.5) * this.viewrange;
-      this.centerpoint[1] = this.zoominglockcoords[1] + (this.mousepos[1] / this.width - this.height / this.width * 0.5) * this.viewrange;
+    if (this.mv.iszooming) {
+      // il faut changer centerpoint de sorte que zoominglockscoords reste la même
+      const [ x, y ] = this.project(...this.mv.zoomlockcoords);
+      this.cam.cp[0] = x - (this.mv.mousepos[0] / this.width - 0.5) * this.cam.vr;
+      this.cam.cp[1] = y + (this.mv.mousepos[1] / this.width - this.height / this.width * 0.5) * this.cam.vr;
     } else {
       if (this.mouseisdown) {
-        this.centerpoint[0] = modx(this.centerpoint[0] - this.lastmousemov[0] * this.viewrange / this.width);
-        this.centerpoint[1] += this.lastmousemov[1] * this.viewrange / this.width;
+        this.cam.cp[0] = modx(this.cam.cp[0] - this.mv.lastmousemov[0] * this.cam.vr / this.width);
+        this.cam.cp[1] += this.mv.lastmousemov[1] * this.cam.vr / this.width;
       } else {
-        this.mouseinerty[0] /= 1.1;
-        this.mouseinerty[1] /= 1.1;
-        this.centerpoint[0] = modx(this.centerpoint[0] - this.mouseinerty[0] * this.viewrange / this.width);
-        this.centerpoint[1] += this.mouseinerty[1] * this.viewrange / this.width;
+        this.mv.mouseinertia[0] /= 1.1;
+        this.mv.mouseinertia[1] /= 1.1;
+        this.cam.cp[0] = modx(this.cam.cp[0] - this.mv.mouseinertia[0] * this.cam.vr / this.width);
+        this.cam.cp[1] += this.mv.mouseinertia[1] * this.cam.vr / this.width;
       }
     }
-    this.lastmousemov = [ 0, 0 ]
+    this.mv.lastmousemov = [ 0, 0 ];
     this.recenter();
-    if (this.mouseisdown && !(centerpointbefore[0] == this.centerpoint[0] && centerpointbefore[1] == this.centerpoint[1])) this.ismoving = true;
+    if (this.mouseisdown && !(centerpointbefore[0] == this.cam.cp[0] && centerpointbefore[1] == this.cam.cp[1])) this.mv.ismoving = true;
   }
 
   shake(time) {
@@ -798,7 +970,7 @@ export class Map {
   }
 
   update(now) {
-    // console.log(this.centerpoint)
+    // console.log(this.cam.cp)
     this.now = now;
     const delta = now - this.lasttime;
     const second = Math.floor(now / 1000);
@@ -816,7 +988,7 @@ export class Map {
     this.shaketimer = Math.max(0, this.shaketimer - delta) | 0;
 
     this.updateMovement();
-    this.canvas.style.cursor = this.ismoving ? "move" : "default"
+    this.canvas.style.cursor = this.mv.ismoving ? "move" : "default"
 
     this.hoveredZones.current[1] = Math.min(this.hoveredZones.current[1] + delta * 6 / 100, this.hoverframes);
     this.hoveredCities.current[1] = Math.min(this.hoveredCities.current[1] + delta * 6 / 100, this.hoverframes);
@@ -829,7 +1001,7 @@ export class Map {
         this.hoveredCities.previous.splice(hci, 1);
     }
 
-    const mousecoords = this.canvasToCoord(this.mousepos);
+    const mousecoords = this.canvasToCoord(this.mv.mousepos);
     this.emousecoords.textContent = `LON: ${Math.round(mousecoords[0] * 10) / 10}, LAT: ${Math.round(Math.sin(mousecoords[1] / 90) * 90 * 10) / 10}`;
 
     for (const zone of this.data.zones) {
@@ -846,7 +1018,7 @@ export class Map {
   hover() {
     // cities
     const lhc = this.hoveredCities.current[0];
-    let hoveredc = this.findHoveredCity(this.canvasToCoord(this.mousepos));
+    let hoveredc = this.findHoveredCity(this.canvasToCoord(this.mv.mousepos));
     if (hoveredc > -1 && !this.data.cities[hoveredc].on) hoveredc = -1;
     if (lhc != hoveredc) {
       this.hoveredCities.previous.push([ lhc, this.hoverframes ]);
@@ -857,7 +1029,7 @@ export class Map {
 
     // zones
     const lhz = this.hoveredZones.current[0];
-    let hoveredz = this.findHoveredZone(this.canvasToCoord(this.mousepos));
+    let hoveredz = this.findHoveredZone(this.canvasToCoord(this.mv.mousepos));
     if (hoveredz == -1 && "ct".includes(this.game.type) && this.hoveredCities.current[0] != -1) for (const zone of this.data.zones) if (zone.info.id == this.data.cities[this.hoveredCities.current[0]].zid) hoveredz = zone.info.id;
     // if (hoveredz == -1 && "ct".includes(this.game.type) && this.hoveredCities.current[0] != -1)
 
@@ -871,8 +1043,8 @@ export class Map {
   }
 
   zoom(e) {
-    this.molette.newTo(Math.max(-this.moletteiterations / 2, Math.min(this.moletteiterations / 2, this.molette.to + e / 100)));
-    this.zoominglockcoords = this.canvasToCoord(this.mousepos);
+    this.mv.molette.newTo(Math.max(-this.mv.moletteiterations / 2, Math.min(this.mv.moletteiterations / 2, this.mv.molette.to + e / 100)));
+    this.mv.zoomlockcoords = this.canvasToCoord(this.mv.mousepos);
   }
 
   mousedown(e) {
@@ -883,8 +1055,8 @@ export class Map {
 
   mouseup(e) {
     this.mouseisdown = false;
-    this.ismoving = false;
-    this.mouseinerty = this.lastmousemov;
+    this.mv.ismoving = false;
+    this.mv.mouseinertia = this.mv.lastmousemov;
     if (this.isaclick) {
       if (this.hoveredZones.current[0]  != -1) this.onclick("z", this.hoveredZones.current[0]);
       if (this.hoveredCities.current[0] != -1) this.onclick("c", this.hoveredCities.current[0]);
@@ -894,12 +1066,12 @@ export class Map {
   }
 
   mousemove(e) {
-    this.lastmousemov[0] += e.clientX - this.mousepos[0];
-    this.lastmousemov[1] += e.clientY - this.mousepos[1];
-    this.mousepos = [ e.clientX, e.clientY ];
-    if (this.mouseisdown && Math.hypot(this.mousepos[0] - this.mouseclickpos[0], this.mousepos[1] - this.mouseclickpos[1]) > 2)
+    this.mv.lastmousemov[0] += e.clientX - this.mv.mousepos[0];
+    this.mv.lastmousemov[1] += e.clientY - this.mv.mousepos[1];
+    this.mv.mousepos[0] = e.clientX;
+    this.mv.mousepos[1] = e.clientY;
+    if (this.mouseisdown && Math.hypot(this.mv.mousepos[1] - this.mouseclickpos[0], this.mv.mousepos[1] - this.mouseclickpos[1]) > 2)
       this.isaclick = false;
     this.hover();
-    this.lastmousepos = this.mousepos;
   }
 }

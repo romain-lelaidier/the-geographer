@@ -1,6 +1,6 @@
 import { A } from "@solidjs/router";
 import { Match, Show, Switch } from "solid-js";
-import { u } from "./auth";
+import { u } from "../api/auth";
 
 export function Layout(props) {
   return (

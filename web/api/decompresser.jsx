@@ -21,10 +21,9 @@ export class Decompresser {
     let coords = [];
     for (let i = 0; i < number; i++) {
       coords.push([
-        //array[2*i], array[2*i+1]
         720 * array[2*i]   / this.max_int16,
         720 * array[2*i+1] / this.max_int16
-      ])
+      ]);
     }
   
     return coords;
@@ -95,7 +94,7 @@ export class Decompresser {
 
     for (let zi = 0; zi < zones_count; zi++) {
 
-      let zone = {};
+      let zone = { id: zi };
       
       const z1 = new Uint16Array(this.readAs(8, 2))
       zone.info = { id: z1[0] };

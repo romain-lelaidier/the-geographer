@@ -1,11 +1,11 @@
 import { MetaProvider, Title } from "@solidjs/meta";
 import { createSignal, Show } from "solid-js";
-import { u, uSaveParams, uTryLog, uTrySignup, uVerify } from "../components/auth"
-import { LinkButton } from "../components/utils";
+import { u, uSaveParams, uTryLog, uTrySignup, uVerify } from "../api/auth"
+import { BackButton, LinkButton } from "../components/utils";
 import { A, useNavigate, useParams } from "@solidjs/router";
 import { Layout } from "../components/layout";
 import { Icon } from "../components/icons";
-import { Flag, FlagSelector } from "../components/flag";
+import { FlagSelector } from "../components/flag";
 
 function Field(props) {
   return (
@@ -28,7 +28,7 @@ function Wrapper(props) {
 
       <div class="flex flex-col gap-3 px-3">
         <div>
-          <A href="/" class="uppercase flex flex-row gap-1 items-center"><Icon type="arrow-left" size={1}/><span class="pt-[0.8]">The Geographer</span></A>
+          <BackButton/>
           <h2 class="text-2xl font-bold">{props.title}</h2>
         </div>
         {props.children}
@@ -143,14 +143,16 @@ export function Settings(props) {
 
   const [ iso, setIso ] = createSignal(null);
   const [ lng, setLng ] = createSignal(null);
+  const [ prj, setPrj ] = createSignal(null);
 
   uTryLog().then(() => {
     setIso(u.params.iso);
     setLng(u.params.lng);
+    setPrj(u.params.prj);
   })
 
   function submit() {
-    uSaveParams({ iso: iso(), lng: lng() }).then(() => {
+    uSaveParams({ iso: iso(), lng: lng(), prj: prj() }).then(() => {
       navigate('/')
     }).catch(setError)
   }
@@ -170,12 +172,22 @@ export function Settings(props) {
           <div class="text-xl">flag</div>
           <FlagSelector iso={iso()} setter={setIso}/>
         </div>
+        <div class="text-2xl font-bold">Preferences</div>
         <div class="flex flex-row items-center gap-2">
           <div class="text-xl">language</div>
           <select name="l" value={lng()} onInput={(e) => { setLng(e.target.value) }} class="bg-b text-white rounded-sm py-1 px-2 text-xl">
             <option value="en">english</option>
             <option value="na">native (endonyms)</option>
             <option value="fr">français</option>
+          </select>
+        </div>
+        <div class="flex flex-row items-center gap-2">
+          <div class="text-xl">cartographic projection</div>
+          <select name="l" value={prj()} onInput={(e) => { setPrj(e.target.value) }} class="bg-b text-white rounded-sm py-1 px-2 text-xl">
+            <option value="nat">natural</option>
+            <option value="mct">mercator</option>
+            <option value="wgs">lon-lat</option>
+            <option value="str">stereographic</option>
           </select>
         </div>
         <Show when={error()}><span class="text-red-700 italic">{error()}</span></Show>

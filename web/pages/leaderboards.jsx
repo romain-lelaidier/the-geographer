@@ -2,10 +2,10 @@ import { A, useParams } from "@solidjs/router";
 import { GameSelector } from "../components/gameselector";
 import { Layout } from "../components/layout";
 import { createResource, createSignal, For, Show } from "solid-js";
-import { getGameLeaderboards } from "../components/auth";
-import { accuracyToString, timeToString, User } from "../components/utils";
-import { Flag } from "../components/flag";
+import { BackButton, Link, User } from "../components/utils";
 import { Icon } from "../components/icons";
+import { getAllPlayers, getGameLeaderboards } from "../api/utils";
+import { accuracyToString, timeToString } from "../api/gameutils";
 
 export default function App(props) {
   const params = useParams();
@@ -13,13 +13,16 @@ export default function App(props) {
   const [ type, setType ] = createSignal(params.game);
   const [ data ] = createResource(type, getGameLeaderboards);
 
+  const [ players ] = createResource(getAllPlayers);
+
   return (
     <Layout>
       <div class="flex flex-col gap-3">
         <div>
-          <A href="/" class="uppercase flex flex-row gap-1 items-center"><Icon type="arrow-left" size={1}/><span class="pt-[0.8]">Home</span></A>
+          <BackButton/>
           <div class="font-bold text-3xl">Leaderboards</div>
         </div>
+
         <GameSelector setter={setType} defaulttype={type()}/>
 
         <Show when={data.loading}>
@@ -38,8 +41,8 @@ export default function App(props) {
               </tr>
               <Show when={data().length > 0}
                 fallback={<tr class={"bg-white/" + (data().length % 2 == 0 ? 20 : 10)}>
-                  <td class="text-base" colspan="4">
-                    no one has played this mode. <A class="font-bold" href={"/play/" + type()}>be the first to do it now !</A>
+                  <td class="text-base" colspan="5">
+                    no one has played this mode. <Link class="font-bold" href={"/play/" + type()}>be the first to do it now !</Link>
                   </td>
                 </tr>}
               >
@@ -54,12 +57,27 @@ export default function App(props) {
                 }</For>
                 <tr class={"bg-white/" + (data().length % 2 == 0 ? 20 : 10)}>
                   <td class="text-base" colspan="5">
-                    <A class="underline" href={"/play/" + type()}>beat the highscore yourself !</A>
+                    <Link class="underline" href={"/play/" + type()}>beat the highscore yourself !</Link>
                   </td>
                 </tr>
               </Show>
             </tbody>
           </table>
+        </Show>
+
+        <Show when={players.loading}>
+          <div>Loading players...</div>
+        </Show>
+
+        <Show when={players()}>
+          <div class="flex flex-col gap-2">
+            <div class="font-bold text-3xl">All users</div>
+            <div class="flex flex-row flex-wrap gap-2">
+              <For each={players()}>{(player, i) =>
+                <User user={player}/>
+              }</For>
+            </div>
+          </div>
         </Show>
       </div>
     </Layout>

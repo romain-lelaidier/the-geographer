@@ -1,8 +1,7 @@
 import { createEffect, createSignal, For } from "solid-js";
-import { info } from "../data/info";
+import { info } from "../api/info";
 import { FlagSelector } from "./flag";
-import { getName, regionName, difficultyName } from "./utils";
-import { parseParams } from "../data/utils";
+import { difficultyName, getName, parseParams, regionName } from "../api/gameutils";
 
 export function GameSelector(props) {
 
