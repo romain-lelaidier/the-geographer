@@ -56,7 +56,7 @@ export default function App(props) {
         <Show when={!data.error && data()}>
           <table class="rounded-md text-lg overflow-hidden text-center">
             <tbody>
-              <tr class="bg-b text-white uppercase font-bold">
+              <tr class="bg-b text-white uppercase font-bold [&>*]:px-1">
                 <td>region</td>
                 <td>type</td>
                 <td>rank</td>

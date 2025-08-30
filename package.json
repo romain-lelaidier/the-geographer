@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start:api": "node --env-file=.env ./api/api.js",
-    "start": "vite --host",
+    "start:web": "vite --host",
+    "start:api": "node --env-file=.env ./api/index.js",
+    "start": "npm run start:web & npm run start:api",
     "build": "vite build",
-    "serve": "vite preview"
+    "serve": "vite preview & npm run start:api"
   },
   "author": "",
   "license": "ISC",

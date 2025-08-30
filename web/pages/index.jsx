@@ -27,8 +27,8 @@ export default function App() {
 
       <div class="flex flex-col items-center gap-8 text-xl text-center">
         <div class="flex flex-col items-center">
-          <div class="text-7xl font-bold uppercase">the geographer</div>
-          <div class="text-2xl">discover, explore, and learn about the world.</div>
+          <div class="text-4xl sm:text-5xl md:text-7xl font-bold uppercase">the geographer</div>
+          <div class="text-xl sm:text-2xl">discover, explore, and learn about the world.</div>
         </div>
 
         <Show
