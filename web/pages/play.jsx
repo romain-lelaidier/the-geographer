@@ -143,6 +143,13 @@ export default function App(props) {
   console.log(params);
 
   const [ data ] = createResource(params, fetchData);
+
+  // createEffect(() => {
+  //   for (const zone of data().zones) {
+  //     if (zone.forced) console.log(zone)
+  //   }
+  // })
+
   const timer = new Timer();
   var map;
 

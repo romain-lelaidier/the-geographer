@@ -101,7 +101,7 @@ export class Decompresser {
       const geometry_length   = z1[1];
       const clickzones_length = z1[2];
       const islands_length    = z1[3];
-      const forced_length     = z1[4];
+      if (z1[4] > 0) zone.forced = z1[4] / 32768;
       zone.enclave = z1[5]
       const rgs_length = z1[6];
       zone.neighbor = z1[7] == 1;
@@ -161,10 +161,6 @@ export class Decompresser {
 
       if (islands_length > 0) {
         zone.islands = this.readAsDots(islands_length).map(x => x.slice(0,2));
-      }
-      if (forced_length > 0) {
-        zone.forced_coords = this.readAsDots(forced_length).map(x => x.slice(0,2));
-        zone.forced = true
       }
       
       obj.zones.push(zone);

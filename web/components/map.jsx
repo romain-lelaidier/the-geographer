@@ -890,7 +890,8 @@ export class Map {
 
     let distances = [];
     for (const zone of this.data.zones) if (zone.forced && zone.on && !zone.neighbor) {
-      if (coord[0] > zone.center[0] - this.frad * zone.forced && coord[0] < zone.center[0] + this.frad * zone.forced) {
+      const rad = this.frad * zone.forced;
+      if (coord[0] > zone.center[0] - rad && coord[0] < zone.center[0] + rad) {
         const d = Math.hypot(coord[0] - zone.center[0], coord[1] - zone.center[1]);
         if (d < this.frad * zone.forced) distances.push([ zone.info.id, d ])
       }
